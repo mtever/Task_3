@@ -33,7 +33,7 @@ void InitMatrix(double** matrix)
 /// последний столбей матрицы - значения правых частей уравнений
 /// rows - количество строк в исходной матрице
 /// result - массив ответов СЛАУ
-void SerialGaussMethod(double **matrix, const int rows, double* result)
+duration<double> SerialGaussMethod(double **matrix, const int rows, double* result)
 {
 	int k;
 	double koef;
@@ -47,18 +47,17 @@ void SerialGaussMethod(double **matrix, const int rows, double* result)
 		{
 			koef = -matrix[i][k] / matrix[k][k];
 
-			//cilk::reducer_opadd<double> koef_new(0);
-			//koef_new->set_value(-matrix[i][k] / matrix[k][k]);
-			cilk_for(int j = k; j <= rows; ++j)
+			for (int j = k; j <= rows; ++j)
 			{
 				matrix[i][j] += koef * matrix[k][j];
-				//matrix[i][j] += koef_new->get_value() * matrix[k][j];
 			}
 		}
 	}
+//	t2 = high_resolution_clock::now();
 	t2 = high_resolution_clock::now();
 	duration<double> duration = (t2 - t1);
-	printf("Time is:: %lf sec\n\n", duration.count());
+	
+
 	// обратный ход метода Гаусса
 	result[rows - 1] = matrix[rows - 1][rows] / matrix[rows - 1][rows - 1];
 
@@ -67,14 +66,54 @@ void SerialGaussMethod(double **matrix, const int rows, double* result)
 		result[k] = matrix[k][rows];
 
 		//
-		cilk::reducer_opadd<double> result_k(matrix[k][rows]);
-		cilk_for(int j = k + 1; j < rows; ++j)
+		for (int j = k + 1; j < rows; ++j)
 		{
 			result[k] -= matrix[k][j] * result[j];
 		}
 
 		result[k] /= matrix[k][k];
 	}
+	return duration;
+}
+
+duration<double> ParallGaussMethod(double **matrix, const int rows, double* result)
+{
+	int k;
+	high_resolution_clock::time_point start = high_resolution_clock::now();
+	// прямой ход метода Гаусса
+	for (k = 0; k < rows; ++k)
+	{
+
+		cilk_for(int i = k + 1; i < rows; ++i)
+		{
+			double koef = -matrix[i][k] / matrix[k][k];
+
+			for (int j = k; j <= rows; ++j)
+			{
+				matrix[i][j] += koef * matrix[k][j];
+			}
+		}
+	}
+	high_resolution_clock::time_point finish = high_resolution_clock::now();
+	duration<double> duration = (finish - start);
+	// обратный ход метода Гаусса
+	result[rows - 1] = matrix[rows - 1][rows] / matrix[rows - 1][rows - 1];
+
+
+	for (k = rows - 2; k >= 0; --k)
+	{
+		cilk::reducer_opadd<double> result_k(matrix[k][rows]);
+
+		cilk_for(int j = k + 1; j < rows; ++j)
+		{
+			result_k -= matrix[k][j] * result[j];
+		}
+
+		result[k] = result_k->get_value() / matrix[k][k];
+
+	}
+
+	return duration;
 }
 
 
@@ -85,9 +124,7 @@ int main()
 	int i;
 
 	// кол-во строк в матрице, приводимой в качестве примера
-	//const int test_matrix_lines = 4;
-	//Меняем на:
-	const int test_matrix_lines = MATRIX_SIZE;
+	const int test_matrix_lines = 4;
 
 	double **test_matrix = new double*[test_matrix_lines];
 
@@ -101,29 +138,40 @@ int main()
 
 	// массив решений СЛАУ
 	double *result = new double[test_matrix_lines];
+	double *result_parall = new double[test_matrix_lines];
 
 	// инициализация тестовой матрицы
-	/*test_matrix[0][0] = 2; test_matrix[0][1] = 5;  test_matrix[0][2] = 4;  test_matrix[0][3] = 1;  test_matrix[0][4] = 20;
+	test_matrix[0][0] = 2; test_matrix[0][1] = 5;  test_matrix[0][2] = 4;  test_matrix[0][3] = 1;  test_matrix[0][4] = 20;
 	test_matrix[1][0] = 1; test_matrix[1][1] = 3;  test_matrix[1][2] = 2;  test_matrix[1][3] = 1;  test_matrix[1][4] = 11;
 	test_matrix[2][0] = 2; test_matrix[2][1] = 10; test_matrix[2][2] = 9;  test_matrix[2][3] = 7;  test_matrix[2][4] = 40;
-	test_matrix[3][0] = 3; test_matrix[3][1] = 8;  test_matrix[3][2] = 9;  test_matrix[3][3] = 2;  test_matrix[3][4] = 37; */
-	//меняем на:
-	InitMatrix(test_matrix);
-	SerialGaussMethod(test_matrix, test_matrix_lines, result);
+	test_matrix[3][0] = 3; test_matrix[3][1] = 8;  test_matrix[3][2] = 9;  test_matrix[3][3] = 2;  test_matrix[3][4] = 37;
+
+	duration<double>duration_serial = SerialGaussMethod(test_matrix, test_matrix_lines, result);
+	
+	duration<double>duration_parall = ParallGaussMethod(test_matrix, test_matrix_lines, result_parall);
 
 	for (i = 0; i < test_matrix_lines; ++i)
 	{
 		delete[]test_matrix[i];
 	}
 
-	//printf("Solution:\n");
-
+	printf("Solution:\n");
+	printf("Serial:\n");
+	printf("Time serial is:: %lf sec\n\n", duration_serial.count());
 	for (i = 0; i < test_matrix_lines; ++i)
 	{
-		//printf("x(%d) = %lf\n", i, result[i]);
+		printf("x(%d) = %lf\n", i, result[i]);
+	}
+	
+	printf("\n\nParall:\n");
+	printf("Time serial is:: %lf sec\n\n", duration_parall.count());
+	for (i = 0; i < test_matrix_lines; ++i)
+	{
+		printf("x(%d) = %lf\n", i, result_parall[i]);
 	}
 
 	delete[] result;
+	delete[] result_parall;
 
 	return 0;
 }
