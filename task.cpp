@@ -47,9 +47,12 @@ void SerialGaussMethod(double **matrix, const int rows, double* result)
 		{
 			koef = -matrix[i][k] / matrix[k][k];
 
-			for (int j = k; j <= rows; ++j)
+			//cilk::reducer_opadd<double> koef_new(0);
+			//koef_new->set_value(-matrix[i][k] / matrix[k][k]);
+			cilk_for(int j = k; j <= rows; ++j)
 			{
 				matrix[i][j] += koef * matrix[k][j];
+				//matrix[i][j] += koef_new->get_value() * matrix[k][j];
 			}
 		}
 	}
@@ -64,7 +67,8 @@ void SerialGaussMethod(double **matrix, const int rows, double* result)
 		result[k] = matrix[k][rows];
 
 		//
-		for (int j = k + 1; j < rows; ++j)
+		cilk::reducer_opadd<double> result_k(matrix[k][rows]);
+		cilk_for(int j = k + 1; j < rows; ++j)
 		{
 			result[k] -= matrix[k][j] * result[j];
 		}
